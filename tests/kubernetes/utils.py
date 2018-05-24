@@ -7,21 +7,81 @@ import netifaces as ni
 import re
 import time
 
-K8S_API_TIMEOUT = 180
+AGENT_YAMLS_DIR = os.environ.get("AGENT_YAMLS_DIR", "/go/src/github.com/signalfx/signalfx-agent/deployments/k8s")
+AGENT_CONFIGMAP_PATH = os.environ.get("AGENT_CONFIGMAP_PATH", os.path.join(AGENT_YAMLS_DIR, "configmap.yaml"))
+AGENT_DAEMONSET_PATH = os.environ.get("AGENT_DAEMONSET_PATH", os.path.join(AGENT_YAMLS_DIR, "daemonset.yaml"))
+AGENT_SERVICEACCOUNT_PATH = os.environ.get("AGENT_SERVICEACCOUNT_PATH", os.path.join(AGENT_YAMLS_DIR, "serviceaccount.yaml"))
+DOCS_DIR = os.environ.get("DOCS_DIR", "/go/src/github.com/signalfx/signalfx-agent/docs")
+MONITORS_DOCS_DIR = os.path.join(DOCS_DIR, "monitors")
+OBSERVERS_DOCS_DIR = os.path.join(DOCS_DIR, "observers")
+CUR_DIR = os.path.dirname(os.path.realpath(__file__))
+K8S_CREATE_TIMEOUT = 120
+K8S_DELETE_TIMEOUT = 10
 
 
-def get_metrics_from_doc(doc, ignore=[]):
+def run_k8s_monitors_test(agent_image, minikube, monitors, observer="k8s-api", yamls=[], expected_metrics=set(), expected_dims=set(), test_timeout=60):
+    if expected_dims is not None:
+        observer_doc = os.path.join(OBSERVERS_DOCS_DIR, observer + ".md")
+        expected_dims = expected_dims.union(get_dims_from_doc(observer_doc), {"kubernetes_cluster"})
+    if expected_metrics and len(expected_metrics) == 0:
+        metrics_txt = os.path.join(CUR_DIR, monitors[0]["type"].replace("/", "-") + '-metrics.txt')
+        if os.path.isfile(metrics_txt):
+            with open(metrics_txt, "r") as fd:
+                expected_metrics = {m.strip() for m in fd.readlines() if len(m.strip()) > 0}
+    with fake_backend.start(ip=get_host_ip()) as backend:
+        with minikube.deploy_yamls(yamls=yamls, services_dir=None):
+            with minikube.deploy_agent(
+                AGENT_CONFIGMAP_PATH,
+                AGENT_DAEMONSET_PATH,
+                AGENT_SERVICEACCOUNT_PATH,
+                observer=observer,
+                monitors=monitors,
+                cluster_name="minikube",
+                backend=backend,
+                image_name=agent_image["name"],
+                image_tag=agent_image["tag"],
+                namespace="default") as agent:
+                if "collectd/statsd" in [m["type"] for m in monitors]:
+                    # hack to populate data for statsd
+                    agent.container.exec_run(["/bin/bash", "-c", 'while true; do echo "statsd.[foo=bar,dim=val]test:1|g" | nc -w 1 -u 127.0.0.1 8125; sleep 1; done'], detach=True)
+                if expected_metrics and expected_dims:
+                    print("\nTesting for any of %d metric(s) with any of %d dimension key(s) ..." % (len(expected_metrics), len(expected_dims)))
+                    assert wait_for(p(any_metric_has_any_dim_key, backend, expected_metrics, expected_dims), timeout_seconds=test_timeout), \
+                        "timed out waiting for any metric in %s with any dimension key in %s!\n\nAGENT STATUS:\n%s\n\nAGENT CONTAINER LOGS:\n%s\n" % \
+                        (expected_metrics, expected_dims, agent.get_status(), agent.get_container_logs())
+                elif expected_metrics:
+                    print("\nTesting for any of %d metric(s) ..." % len(expected_metrics))
+                    assert wait_for(p(any_metric_found, backend, expected_metrics), timeout_seconds=test_timeout), \
+                        "timed out waiting for any metric in %s!\n\nAGENT STATUS:\n%s\n\nAGENT CONTAINER LOGS:\n%s\n" % \
+                        (expected_metrics, agent.get_status(), agent.get_container_logs())
+                elif expected_dims:
+                    print("\nTesting for any of %d dimension key(s) ..." % len(expected_dims))
+                    assert wait_for(p(any_dim_key_found, backend, expected_dims), timeout_seconds=test_timeout), \
+                        "timed out waiting for any dimension key in %s!\n\nAGENT STATUS:\n%s\n\nAGENT CONTAINER LOGS:\n%s\n" % \
+                        (expected_dims, agent.get_status(), agent.get_container_logs())
+                agent_status = agent.get_status()
+                container_logs = agent.get_container_logs()
+                assert "testing123" not in agent_status, "plaintext password(s) found in agent-status output!\n\n%s\n" % agent_status
+                assert "testing123" not in container_logs, "plaintext password(s) found in agent container logs!\n\n%s\n" % container_logs
+
+
+def get_metrics_from_doc(doc, ignore=[], doc_dir=MONITORS_DOCS_DIR):
     """
     Parse markdown document for metrics.
 
     Args:
-    doc (str):            Path to markdown document
+    doc (str):            Name or path to markdown document
     ignore (list of str): Metrics to exclude/ignore
+    doc_dir (str):        Directory containing `doc`
 
     Returns:
     Sorted set of metric names from `doc` excluding those in `ignore`
     """
-    assert os.path.isfile(doc), "\"%s\" not found!" % doc
+    if not os.path.isfile(doc) and doc_dir and os.path.isdir(doc_dir):
+        doc = os.path.join(doc_dir, doc)
+        assert os.path.isfile(doc), "\"%s\" not found!" % doc
+    else:
+        assert os.path.isfile(doc), "\"%s\" not found!" % doc
     with open(doc, 'r') as fd:
         metrics = set(re.findall('\|\s+`(.*?)`\s+\|\s+(?:counter|gauge|cumulative)\s+\|', fd.read(), re.IGNORECASE))
         if len(metrics) > 0 and len(ignore) > 0:
@@ -30,18 +90,23 @@ def get_metrics_from_doc(doc, ignore=[]):
 
 
 # returns a sorted set of dimension names from `doc` excluding those in `ignore`
-def get_dims_from_doc(doc, ignore=[]):
+def get_dims_from_doc(doc, ignore=[], doc_dir=MONITORS_DOCS_DIR):
     """
     Parse markdown document for dimensions.
 
     Args:
-    doc (str):            Path to markdown document
-    ignore (list of str): Dimensions to exclude/ignore
+    doc (str):            Name or path to markdown document
+    ignore (list of str): Metrics to exclude/ignore
+    doc_dir (str):        Directory containing `doc`
 
     Returns:
     Sorted set of dimensions from `doc` excluding those in `ignore`
     """
-    assert os.path.isfile(doc), "\"%s\" not found!" % doc
+    if not os.path.isfile(doc) and doc_dir and os.path.isdir(doc_dir):
+        doc = os.path.join(doc_dir, doc)
+        assert os.path.isfile(doc), "\"%s\" not found!" % doc
+    else:
+        assert os.path.isfile(doc), "\"%s\" not found!" % doc
     with open(doc, 'r') as fd:
         dims = set()
         line = fd.readline()
@@ -95,7 +160,7 @@ def has_serviceaccount(name, namespace="default"):
         return False
 
 
-def create_serviceaccount(body=None, namespace="default", timeout=K8S_API_TIMEOUT):
+def create_serviceaccount(body=None, namespace="default", timeout=K8S_CREATE_TIMEOUT):
     api = kube_client.CoreV1Api()
     if body:
         name = body['metadata']['name']
@@ -120,7 +185,7 @@ def has_configmap(name, namespace="default"):
         return False
 
 
-def create_configmap(body=None, name="", data={}, labels={}, namespace="default", timeout=K8S_API_TIMEOUT):
+def create_configmap(body=None, name="", data={}, labels={}, namespace="default", timeout=K8S_CREATE_TIMEOUT):
     api = kube_client.CoreV1Api()
     if body:
         name = body['metadata']['name']
@@ -142,7 +207,7 @@ def create_configmap(body=None, name="", data={}, labels={}, namespace="default"
     return configmap
 
 
-def patch_configmap(body, namespace="default", timeout=K8S_API_TIMEOUT):
+def patch_configmap(body, namespace="default", timeout=K8S_CREATE_TIMEOUT):
     api = kube_client.CoreV1Api()
     name = body['metadata']['name']
     body["apiVersion"] = "v1"
@@ -158,7 +223,7 @@ def patch_configmap(body, namespace="default", timeout=K8S_API_TIMEOUT):
     return configmap
 
 
-def delete_configmap(name, namespace="default", timeout=K8S_API_TIMEOUT):
+def delete_configmap(name, namespace="default", timeout=K8S_DELETE_TIMEOUT):
     if not has_configmap(name, namespace=namespace):
         return
     api = kube_client.CoreV1Api()
@@ -178,7 +243,7 @@ def has_deployment(name, namespace="default"):
         return False
 
 
-def create_deployment(body=None, name="", pod_template=None, replicas=1, labels={}, namespace="default", timeout=K8S_API_TIMEOUT):
+def create_deployment(body=None, name="", pod_template=None, replicas=1, labels={}, namespace="default", timeout=K8S_CREATE_TIMEOUT):
     api = kube_client.ExtensionsV1beta1Api()
     if body:
         name = body["metadata"]["name"]
@@ -203,7 +268,7 @@ def create_deployment(body=None, name="", pod_template=None, replicas=1, labels=
     return deployment
 
 
-def delete_deployment(name, namespace="default", timeout=K8S_API_TIMEOUT):
+def delete_deployment(name, namespace="default", timeout=K8S_DELETE_TIMEOUT):
     if not has_deployment(name, namespace=namespace):
         return
     api = kube_client.ExtensionsV1beta1Api()
@@ -223,7 +288,7 @@ def has_daemonset(name, namespace="default"):
         return False
 
 
-def create_daemonset(body=None, namespace="default", timeout=K8S_API_TIMEOUT):
+def create_daemonset(body=None, namespace="default", timeout=K8S_CREATE_TIMEOUT):
     api = kube_client.ExtensionsV1beta1Api()
     if body:
         name = body['metadata']['name']
@@ -239,7 +304,7 @@ def create_daemonset(body=None, namespace="default", timeout=K8S_API_TIMEOUT):
     return daemonset
 
 
-def delete_daemonset(name, namespace="default", timeout=K8S_API_TIMEOUT):
+def delete_daemonset(name, namespace="default", timeout=K8S_DELETE_TIMEOUT):
     if not has_daemonset(name, namespace=namespace):
         return
     api = kube_client.ExtensionsV1beta1Api()
@@ -304,8 +369,6 @@ def all_pods_have_ips():
         else:
             ips += 1
     if ips == len(pods):
-        for pod in pods:
-            print("%s\t%s\t%s" % (pod.status.pod_ip, pod.metadata.namespace, pod.metadata.name))
         return True
     return False
 

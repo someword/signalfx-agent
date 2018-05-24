@@ -169,7 +169,7 @@ class Minikube:
         time.sleep(5)
         self.client.images.pull(name, tag=tag)
         _, output = self.container.exec_run('docker images')
-        print_lines(output.decode('utf-8'))
+        print(output.decode('utf-8') + "\n")
 
     @contextmanager
     def deploy_agent(self, configmap_path, daemonset_path, serviceaccount_path, observer=None, monitors=[], cluster_name="minikube", backend=None, image_name=None, image_tag=None, namespace="default"):
