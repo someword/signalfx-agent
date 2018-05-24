@@ -103,40 +103,39 @@ class Minikube:
         self.get_client()
 
     @contextmanager
-    def deploy_yamls(self, yamls=[], services_dir=K8S_SERVICES_DIR):
-        self.yamls= []
-        if services_dir:
-            yamls = sorted([os.path.join(services_dir, y) for y in yamls])
-        for y in yamls:
-            assert os.path.isfile(y)
-            body = yaml.load(open(y))
-            kind = body['kind']
-            name = body['metadata']['name']
-            namespace = body['metadata']['namespace']
-            if kind == "ConfigMap":
-                if has_configmap(name, namespace=namespace):
-                    print("Deleting configmap \"%s\" ..." % name)
-                    delete_configmap(name, namespace=namespace)
-                print("Creating configmap from %s ..." % y)
-                create_configmap(body=yaml.load(open(y)))
-                self.yamls.append(body)
-        for y in yamls:
-            body = yaml.load(open(y))
-            kind = body['kind']
-            name = body['metadata']['name']
-            namespace = body['metadata']['namespace']
-            body = yaml.load(open(y))
-            if kind == "ConfigMap":
-                continue
-            assert kind == "Deployment", "kind \"%s\" in %s not yet supported!" % (kind, y)
-            if has_deployment(name, namespace=namespace):
-                print("Deleting deployment \"%s\" ..." % name)
-                delete_deployment(name, namespace=namespace)
-            print("Creating deployment from %s ..." % y)
-            create_deployment(body=body)
-            self.yamls.append(body)
-        if len(self.yamls) > 0:
-            assert wait_for(all_pods_have_ips, timeout_seconds=300), "timed out waiting for pod IPs!"
+    def deploy_k8s_yamls(self, yamls=[], timeout=120):
+        self.yamls = []
+        for yaml_file in yamls:
+            assert os.path.isfile(yaml_file), "\"%s\" not found!" % yaml_file
+            docs = []
+            for doc in yaml.load_all(open(yaml_file, "r").read()):
+                assert doc['kind'] in ["ConfigMap", "Deployment"], "kind \"%s\" in %s not yet supported!" % (doc['kind'], yaml_file)
+                docs.append(doc)
+            # create ConfigMaps first
+            for doc in docs:
+                kind = doc['kind']
+                name = doc['metadata']['name']
+                namespace = doc['metadata']['namespace']
+                if kind == "ConfigMap":
+                    if has_configmap(name, namespace=namespace):
+                        print("Deleting configmap \"%s\" ..." % name)
+                        delete_configmap(name, namespace=namespace)
+                    print("Creating configmap from %s ..." % yaml_file)
+                    create_configmap(body=doc, timeout=timeout)
+                    self.yamls.append(doc)
+            # create Deployments
+            for doc in docs:
+                kind = doc['kind']
+                name = doc['metadata']['name']
+                namespace = doc['metadata']['namespace']
+                if kind == "ConfigMap":
+                    continue
+                if has_deployment(name, namespace=namespace):
+                    print("Deleting deployment \"%s\" ..." % name)
+                    delete_deployment(name, namespace=namespace)
+                print("Creating deployment from %s ..." % yaml_file)
+                create_deployment(body=doc, timeout=timeout)
+                self.yamls.append(doc)
         try:
             yield
         finally:
@@ -169,7 +168,7 @@ class Minikube:
         time.sleep(5)
         self.client.images.pull(name, tag=tag)
         _, output = self.container.exec_run('docker images')
-        print(output.decode('utf-8') + "\n")
+        print(output.decode('utf-8'))
 
     @contextmanager
     def deploy_agent(self, configmap_path, daemonset_path, serviceaccount_path, observer=None, monitors=[], cluster_name="minikube", backend=None, image_name=None, image_tag=None, namespace="default"):
