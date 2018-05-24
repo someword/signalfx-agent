@@ -43,14 +43,6 @@ references:
                     tests
 
 jobs:
-  test:
-    <<: *executor
-    environment:
-      PYTEST_MARKERS: "k8s and (kubelet_stats or kubernetes_cluster or kubernetes_volumes or nginx or rabbitmq)"
-    steps:
-     - run: |
-        echo "$PYTEST_MARKERS"
-
   build:
     <<: *executor
     steps:
@@ -415,4 +407,3 @@ workflows:
      - puppet_tests
      - salt_tests
      - ansible_tests
-     - test
