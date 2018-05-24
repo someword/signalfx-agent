@@ -28,7 +28,7 @@ references:
             --name signalfx-agent-dev \
             signalfx-agent-dev \
                 pytest \
-                    -m "$(eval \"echo -n $K8S_MARKERS\")" \
+                    -m "$(eval 'echo -n \"$PYTEST_MARKERS\"')" \
                     --exitfirst \
                     --verbose \
                     --junitxml=/output/integration_tests.xml \
@@ -153,7 +153,7 @@ jobs:
     <<: *executor
     environment:
       K8S_VERSION: "v1.10.0"
-      K8S_MARKERS: "k8s and (kubelet_stats or kubernetes_cluster or kubernetes_volumes or nginx or rabbitmq)"
+      PYTEST_MARKERS: "k8s and (kubelet_stats or kubernetes_cluster or kubernetes_volumes or nginx or rabbitmq)"
     steps:
       - *attach_workspace
       - *import_image
@@ -168,7 +168,7 @@ jobs:
     <<: *executor
     environment:
       K8S_VERSION: "v1.9.0"
-      K8S_MARKERS: "k8s and (kubelet_stats or kubernetes_cluster or kubernetes_volumes or nginx or rabbitmq)"
+      PYTEST_MARKERS: "k8s and (kubelet_stats or kubernetes_cluster or kubernetes_volumes or nginx or rabbitmq)"
     steps:
       - *attach_workspace
       - *import_image
@@ -183,7 +183,7 @@ jobs:
     <<: *executor
     environment:
       K8S_VERSION: "v1.8.0"
-      K8S_MARKERS: "k8s and (kubelet_stats or kubernetes_cluster or kubernetes_volumes or nginx or rabbitmq)"
+      PYTEST_MARKERS: "k8s and (kubelet_stats or kubernetes_cluster or kubernetes_volumes or nginx or rabbitmq)"
     steps:
       - *attach_workspace
       - *import_image
@@ -198,7 +198,7 @@ jobs:
     <<: *executor
     environment:
       K8S_VERSION: "v1.7.0"
-      K8S_MARKERS: "k8s and (kubelet_stats or kubernetes_cluster or kubernetes_volumes or nginx or rabbitmq)"
+      PYTEST_MARKERS: "k8s and (kubelet_stats or kubernetes_cluster or kubernetes_volumes or nginx or rabbitmq)"
     steps:
       - *attach_workspace
       - *import_image
