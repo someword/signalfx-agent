@@ -19,7 +19,7 @@ K8S_CREATE_TIMEOUT = 120
 K8S_DELETE_TIMEOUT = 10
 
 
-def run_k8s_monitors_test(agent_image, minikube, monitors, observer="k8s-api", yamls=[], expected_metrics=set(), expected_dims=set(), test_timeout=60):
+def run_k8s_monitors_test(agent_image, minikube, monitors, observer="k8s-api", yamls=[], yamls_timeout=K8S_CREATE_TIMEOUT, expected_metrics=set(), expected_dims=set(), test_timeout=60):
     if expected_dims is not None:
         observer_doc = os.path.join(OBSERVERS_DOCS_DIR, observer + ".md")
         expected_dims = expected_dims.union(get_dims_from_doc(observer_doc), {"kubernetes_cluster"})
@@ -29,7 +29,7 @@ def run_k8s_monitors_test(agent_image, minikube, monitors, observer="k8s-api", y
             with open(metrics_txt, "r") as fd:
                 expected_metrics = {m.strip() for m in fd.readlines() if len(m.strip()) > 0}
     with fake_backend.start(ip=get_host_ip()) as backend:
-        with minikube.deploy_yamls(yamls=yamls, services_dir=None):
+        with minikube.deploy_k8s_yamls(yamls, timeout=yamls_timeout):
             with minikube.deploy_agent(
                 AGENT_CONFIGMAP_PATH,
                 AGENT_DAEMONSET_PATH,
@@ -243,6 +243,15 @@ def has_deployment(name, namespace="default"):
         return False
 
 
+def deployment_is_ready(name, replicas, namespace):
+    api = kube_client.ExtensionsV1beta1Api()
+    if not has_deployment(name, namespace=namespace):
+        return False
+    if api.read_namespaced_deployment_status(name, namespace=namespace).status.ready_replicas == replicas:
+        return True
+    return False
+
+
 def create_deployment(body=None, name="", pod_template=None, replicas=1, labels={}, namespace="default", timeout=K8S_CREATE_TIMEOUT):
     api = kube_client.ExtensionsV1beta1Api()
     if body:
@@ -250,6 +259,10 @@ def create_deployment(body=None, name="", pod_template=None, replicas=1, labels=
         body["apiVersion"] = "extensions/v1beta1"
         try:
             namespace = body["metadata"]["namespace"]
+        except:
+            pass
+        try:
+            replicas = body["spec"]["replicas"]
         except:
             pass
     else:
@@ -264,7 +277,7 @@ def create_deployment(body=None, name="", pod_template=None, replicas=1, labels=
     deployment = api.create_namespaced_deployment(
         body=body,
         namespace=namespace)
-    assert wait_for(p(has_deployment, name, namespace=namespace), timeout_seconds=timeout), "timed out waiting for deployment \"%s\" to be created!" % name
+    assert wait_for(p(deployment_is_ready, name, replicas, namespace=namespace), timeout_seconds=timeout), "timed out waiting for deployment \"%s\" to be ready!" % name
     return deployment
 
 
@@ -288,6 +301,15 @@ def has_daemonset(name, namespace="default"):
         return False
 
 
+def daemonset_is_ready(name, namespace):
+    api = kube_client.ExtensionsV1beta1Api()
+    if not has_daemonset(name, namespace=namespace):
+        return False
+    if api.read_namespaced_daemon_set_status(name, namespace=namespace).status.number_ready > 0:
+        return True
+    return False
+
+
 def create_daemonset(body=None, namespace="default", timeout=K8S_CREATE_TIMEOUT):
     api = kube_client.ExtensionsV1beta1Api()
     if body:
@@ -300,7 +322,7 @@ def create_daemonset(body=None, namespace="default", timeout=K8S_CREATE_TIMEOUT)
     daemonset = api.create_namespaced_daemon_set(
         body=body,
         namespace=namespace)
-    assert wait_for(p(has_daemonset, name, namespace=namespace), timeout_seconds=timeout), "timed out waiting for daemonset \"%s\" to be created!" % name
+    assert wait_for(p(daemonset_is_ready, name, namespace=namespace), timeout_seconds=timeout), "timed out waiting for daemonset \"%s\" to be ready!" % name
     return daemonset
 
 
