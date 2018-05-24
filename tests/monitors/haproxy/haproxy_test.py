@@ -18,7 +18,7 @@ def test_haproxy_in_k8s(agent_image, minikube, k8s_observer, k8s_test_timeout):
          "discoveryRule": 'container_image =~ "haproxy" && private_port == 9000',
          "enhancedMetrics": True},
     ]
-    yamls = [os.path.join(os.path.dirname(os.path.realpath(__file__)), y) for y in ["haproxy-configmap.yaml", "haproxy.yaml"]]
+    yamls = [os.path.join(os.path.dirname(os.path.realpath(__file__)), y) for y in ["haproxy-k8s.yaml"]]
     run_k8s_monitors_test(
         agent_image,
         minikube,

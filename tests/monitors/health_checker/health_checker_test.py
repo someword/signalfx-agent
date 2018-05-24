@@ -20,7 +20,7 @@ def test_health_checker_in_k8s(agent_image, minikube, k8s_observer, k8s_test_tim
          "jsonKey": "status",
          "jsonVal": "ok"},
     ]
-    yamls = [os.path.join(os.path.dirname(os.path.realpath(__file__)), y) for y in ["health-checker-configmap.yaml", "health-checker.yaml"]]
+    yamls = [os.path.join(os.path.dirname(os.path.realpath(__file__)), y) for y in ["health-checker-k8s.yaml"]]
     with open(os.path.join(os.path.dirname(os.path.realpath(__file__)), "metrics.txt"), "r") as fd:
         expected_metrics = {m.strip() for m in fd.readlines() if len(m.strip()) > 0}
     run_k8s_monitors_test(

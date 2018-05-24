@@ -38,7 +38,7 @@ def test_nginx_in_k8s(agent_image, minikube, k8s_observer, k8s_test_timeout):
          "url": 'http://{{.Host}}:{{.Port}}/nginx_status',
          "username": "testuser", "password": "testing123"},
     ]
-    yamls = [os.path.join(os.path.dirname(os.path.realpath(__file__)), y) for y in ["nginx-configmap.yaml", "nginx.yaml"]]
+    yamls = [os.path.join(os.path.dirname(os.path.realpath(__file__)), y) for y in ["nginx-k8s.yaml"]]
     run_k8s_monitors_test(
         agent_image,
         minikube,

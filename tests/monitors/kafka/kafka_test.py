@@ -19,7 +19,7 @@ def test_kafka_in_k8s(agent_image, minikube, k8s_observer, k8s_test_timeout):
          "serviceURL": 'service:jmx:rmi:///jndi/rmi://{{.Host}}:{{.Port}}/jmxrmi',
          "username": "testuser", "password": "testing123"},
     ]
-    yamls = [os.path.join(os.path.dirname(os.path.realpath(__file__)), y) for y in ["kafka-configmap.yaml", "kafka.yaml"]]
+    yamls = [os.path.join(os.path.dirname(os.path.realpath(__file__)), y) for y in ["kafka-k8s.yaml"]]
     run_k8s_monitors_test(
         agent_image,
         minikube,
