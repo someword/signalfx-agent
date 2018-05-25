@@ -28,6 +28,7 @@ references:
             --name signalfx-agent-dev \
             signalfx-agent-dev \
                 pytest \
+                    -n2 \
                     -m "$PYTEST_MARKERS" \
                     --exitfirst \
                     --verbose \
