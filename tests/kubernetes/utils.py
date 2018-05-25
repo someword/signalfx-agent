@@ -135,7 +135,7 @@ def has_secret(name, namespace="default"):
         api.read_namespaced_secret(name, namespace=namespace)
         return True
     except ApiException as e:
-        if 'Reason: Not Found' in str(e):
+        if e.status == 404:
             return False
         else:
             raise
@@ -156,7 +156,7 @@ def has_serviceaccount(name, namespace="default"):
         api.read_namespaced_service_account(name, namespace=namespace)
         return True
     except ApiException as e:
-        if 'Reason: Not Found' in str(e):
+        if e.status == 404:
             return False
         else:
             raise
@@ -184,7 +184,7 @@ def has_configmap(name, namespace="default"):
         api.read_namespaced_config_map(name, namespace=namespace)
         return True
     except ApiException as e:
-        if 'Reason: Not Found' in str(e):
+        if e.status == 404:
             return False
         else:
             raise
@@ -245,7 +245,7 @@ def has_deployment(name, namespace="default"):
         api.read_namespaced_deployment(name, namespace=namespace)
         return True
     except ApiException as e:
-        if 'Reason: Not Found' in str(e):
+        if e.status == 404:
             return False
         else:
             raise
@@ -306,7 +306,7 @@ def has_daemonset(name, namespace="default"):
         api.read_namespaced_daemon_set(name, namespace=namespace)
         return True
     except ApiException as e:
-        if 'Reason: Not Found' in str(e):
+        if e.status == 404:
             return False
         else:
             raise
