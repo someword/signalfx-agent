@@ -119,3 +119,19 @@ chef-%:
 puppet-%:
 	$(MAKE) -C deployments/puppet $*
 
+.PHONY: run-k8s-tests
+run-k8s-tests:
+	docker exec -it signalfx-agent-dev \
+		pytest --verbose \
+			-m "k8s and (kubelet_stats or kubernetes_cluster or kubernetes_volumes or nginx or rabbitmq)" \
+			tests || \
+	docker run -it --rm --net host \
+		-v $(CURDIR):/go/src/github.com/signalfx/signalfx-agent:cached \
+		-v /var/run/docker.sock:/var/run/docker.sock \
+		-v /tmp/scratch:/tmp/scratch \
+		--name signalfx-agent-dev \
+		signalfx-agent-dev \
+			pytest --verbose \
+				-m "k8s and (kubelet_stats or kubernetes_cluster or kubernetes_volumes or nginx or rabbitmq)" \
+				tests
+
