@@ -6,6 +6,7 @@ import json
 import os
 import pytest
 import semver
+import socket
 import subprocess
 import sys
 import time
@@ -134,38 +135,43 @@ def pytest_generate_tests(metafunc):
 
 
 @pytest.fixture(scope="session")
-def local_registry():
+def local_registry(request):
+    def get_free_port():
+        s = socket.socket()
+        s.bind(('', 0))
+        return s.getsockname()[1]
+
+    def teardown():
+        if cont:
+            cont.remove(force=True, v=True)
+
+    request.addfinalizer(teardown)
+
     client = get_docker_client()
     cont = None
-    try:
-        client.containers.get("registry")
-        print("\nRegistry container localhost:5000 already running")
-    except:
-        print("\nStarting registry container localhost:5000 ...")
-        cont = client.containers.run(
-            image='registry:latest',
-            name='registry',
-            detach=True,
-            ports={'5000/tcp': 5000})
-        assert wait_for(lambda: has_log_message(cont.logs().decode('utf-8'), message="listening on [::]:5000"), timeout_seconds=5), \
-            "timed out waiting for registry container to be ready!\n\n%s\n" % cont.logs().decode('utf-8')
-    try:
-        yield
-    finally:
-        if cont:
-            cont.remove(force=True)
+    port = get_free_port()
+    print("\nStarting registry container localhost:%d ..." % port)
+    cont = client.containers.run(
+        image='registry:latest',
+        detach=True,
+        environment={"REGISTRY_HTTP_ADDR": "0.0.0.0:%d" % port},
+        ports={"%d/tcp" % port: port})
+    assert wait_for(lambda: has_log_message(cont.logs().decode('utf-8'), message="listening on [::]:%d" % port), timeout_seconds=5), \
+        "timed out waiting for registry container to be ready!\n\n%s\n" % cont.logs().decode('utf-8')
+    return (cont, port)
 
 
 @pytest.fixture(scope="session")
 def agent_image(local_registry, request):
+    port = local_registry[1]
     client = get_docker_client()
     final_agent_image_name = request.config.getoption("--k8s-agent-name")
     final_agent_image_tag = request.config.getoption("--k8s-agent-tag")
-    agent_image_name = "localhost:5000/%s" % final_agent_image_name.split("/")[-1]
+    agent_image_name = "localhost:%d/%s" % (port, final_agent_image_name.split("/")[-1])
     agent_image_tag = final_agent_image_tag
     try:
         final_agent_image = client.images.get(final_agent_image_name + ":" + final_agent_image_tag)
-    except:
+    except docker.errors.ImageNotFound:
         try:
             print("\nAgent image '%s:%s' not found in local registry." % (final_agent_image_name, final_agent_image_tag))
             print("\nAttempting to pull from remote registry ...")
@@ -191,6 +197,7 @@ def minikube(request):
     def teardown():
         if not k8s_container and not k8s_skip_teardown:
             try:
+                print("Tearing down minikube container ...")
                 mk.container.remove(force=True, v=True)
             except:
                 pass
