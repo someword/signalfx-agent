@@ -164,6 +164,36 @@ jobs:
       - store_artifacts:
           path: ~/testresults/k8s_integration_tests.html
 
+  k8s_v1.9.0_monitors_with_endpoints_tests:
+    <<: *executor
+    environment:
+      K8S_VERSION: "v1.9.0"
+      PYTEST_MARKERS: "k8s and monitor_with_endpoints"
+    steps:
+      - *attach_workspace
+      - *import_image
+      - *import_final_image
+      - *run_k8s_integration_tests
+      - store_test_results:
+          path: ~/testresults
+      - store_artifacts:
+          path: ~/testresults/k8s_integration_tests.html
+
+  k8s_v1.9.0_monitors_without_endpoints_tests:
+    <<: *executor
+    environment:
+      K8S_VERSION: "v1.9.0"
+      PYTEST_MARKERS: "k8s and monitor_without_endpoints"
+    steps:
+      - *attach_workspace
+      - *import_image
+      - *import_final_image
+      - *run_k8s_integration_tests
+      - store_test_results:
+          path: ~/testresults
+      - store_artifacts:
+          path: ~/testresults/k8s_integration_tests.html
+
   k8s_v1.9.0_integration_tests:
     <<: *executor
     environment:
@@ -386,6 +416,14 @@ workflows:
 #        requires:
 #         - build
 #         - build_final_image
+     - k8s_v1.9.0_monitors_with_endpoints_tests:
+        requires:
+         - build
+         - build_final_image
+     - k8s_v1.9.0_monitors_without_endpoints_tests:
+        requires:
+         - build
+         - build_final_image
      - k8s_v1.9.0_integration_tests:
         requires:
          - build
