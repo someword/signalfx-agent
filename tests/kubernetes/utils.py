@@ -23,11 +23,6 @@ def run_k8s_monitors_test(agent_image, minikube, monitors, observer="k8s-api", y
     if expected_dims is not None:
         observer_doc = os.path.join(OBSERVERS_DOCS_DIR, observer + ".md")
         expected_dims = expected_dims.union(get_dims_from_doc(observer_doc), {"kubernetes_cluster"})
-    if expected_metrics and len(expected_metrics) == 0:
-        metrics_txt = os.path.join(CUR_DIR, monitors[0]["type"].replace("/", "-") + '-metrics.txt')
-        if os.path.isfile(metrics_txt):
-            with open(metrics_txt, "r") as fd:
-                expected_metrics = {m.strip() for m in fd.readlines() if len(m.strip()) > 0}
     with fake_backend.start(ip=get_host_ip()) as backend:
         with minikube.deploy_k8s_yamls(yamls, timeout=yamls_timeout):
             with minikube.deploy_agent(
