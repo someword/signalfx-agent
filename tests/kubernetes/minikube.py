@@ -28,7 +28,7 @@ class Minikube:
 
     def get_client(self):
         if self.container:
-            self.client = docker.DockerClient(base_url="tcp://%s:2375" % self.container.attrs["NetworkSettings"]["IPAddress"], version='auto')
+            self.client = docker.DockerClient(base_url="tcp://%s:2375" % container_ip(self.container), version='auto')
             return self.client
         else:
             return None
@@ -57,16 +57,12 @@ class Minikube:
         self.version = version
         self.load_kubeconfig(timeout=timeout)
 
-    def deploy(self, version, timeout, name=None, options={}):
+    def deploy(self, version, timeout, options={}):
         self.version = version
         if self.version[0] != 'v':
             self.version = 'v' + self.version
-        self.name = name
-        if not self.name:
-            self.name = "minikube-%s-%s" % (MINIKUBE_VERSION, self.version)
         if not options:
             options = {
-                "name": self.name,
                 "privileged": True,
                 "extra_hosts": {
                     "localhost": get_host_ip()
@@ -98,6 +94,7 @@ class Minikube:
             image.id,
             detach=True,
             **options)
+        self.name = self.container.name
         self.load_kubeconfig(timeout=timeout)
         self.container.reload()
         self.get_client()
