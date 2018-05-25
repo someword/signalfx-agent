@@ -35,7 +35,7 @@ references:
                     --html=/output/k8s_integration_tests.html \
                     --self-contained-html \
                     --k8s-versions="$K8S_VERSION" \
-                    --k8s-observers=k8s-api,k8s-kubelet \
+                    --k8s-observers=$K8S_OBSERVERS \
                     --k8s-timeout=300 \
                     --k8s-test-timeout=120 \
                     --k8s-agent-name=quay.io/signalfx/signalfx-agent-dev \
@@ -153,6 +153,7 @@ jobs:
     <<: *executor
     environment:
       K8S_VERSION: "v1.10.0"
+      K8S_OBSERVERS: "k8s-api,k8s-kubelet"
       PYTEST_MARKERS: "k8s and (kubelet_stats or kubernetes_cluster or kubernetes_volumes or nginx or rabbitmq)"
     steps:
       - *attach_workspace
@@ -164,10 +165,27 @@ jobs:
       - store_artifacts:
           path: ~/testresults/k8s_integration_tests.html
 
-  k8s_v1.9.0_monitors_with_endpoints_tests:
+  k8s_v1.9.0_k8s-api_monitors_with_endpoints_tests:
     <<: *executor
     environment:
       K8S_VERSION: "v1.9.0"
+      K8S_OBSERVERS: "k8s-api"
+      PYTEST_MARKERS: "k8s and monitor_with_endpoints"
+    steps:
+      - *attach_workspace
+      - *import_image
+      - *import_final_image
+      - *run_k8s_integration_tests
+      - store_test_results:
+          path: ~/testresults
+      - store_artifacts:
+          path: ~/testresults/k8s_integration_tests.html
+
+  k8s_v1.9.0_k8s-kubelet_monitors_with_endpoints_tests:
+    <<: *executor
+    environment:
+      K8S_VERSION: "v1.9.0"
+      K8S_OBSERVERS: "k8s-kubelet"
       PYTEST_MARKERS: "k8s and monitor_with_endpoints"
     steps:
       - *attach_workspace
@@ -183,6 +201,7 @@ jobs:
     <<: *executor
     environment:
       K8S_VERSION: "v1.9.0"
+      K8S_OBSERVERS: "k8s-api"
       PYTEST_MARKERS: "k8s and monitor_without_endpoints"
     steps:
       - *attach_workspace
@@ -198,6 +217,7 @@ jobs:
     <<: *executor
     environment:
       K8S_VERSION: "v1.9.0"
+      K8S_OBSERVERS: "k8s-api,k8s-kubelet"
       PYTEST_MARKERS: "k8s and (kubelet_stats or kubernetes_cluster or kubernetes_volumes or nginx or rabbitmq)"
     steps:
       - *attach_workspace
@@ -213,6 +233,7 @@ jobs:
     <<: *executor
     environment:
       K8S_VERSION: "v1.8.0"
+      K8S_OBSERVERS: "k8s-api,k8s-kubelet"
       PYTEST_MARKERS: "k8s and (kubelet_stats or kubernetes_cluster or kubernetes_volumes or nginx or rabbitmq)"
     steps:
       - *attach_workspace
@@ -228,6 +249,7 @@ jobs:
     <<: *executor
     environment:
       K8S_VERSION: "v1.7.0"
+      K8S_OBSERVERS: "k8s-api,k8s-kubelet"
       PYTEST_MARKERS: "k8s and (kubelet_stats or kubernetes_cluster or kubernetes_volumes or nginx or rabbitmq)"
     steps:
       - *attach_workspace
@@ -416,7 +438,11 @@ workflows:
 #        requires:
 #         - build
 #         - build_final_image
-     - k8s_v1.9.0_monitors_with_endpoints_tests:
+     - k8s_v1.9.0_k8s-api_monitors_with_endpoints_tests:
+        requires:
+         - build
+         - build_final_image
+     - k8s_v1.9.0_k8s-kubelet_monitors_with_endpoints_tests:
         requires:
          - build
          - build_final_image
