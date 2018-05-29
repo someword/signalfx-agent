@@ -28,7 +28,7 @@ references:
             --name signalfx-agent-dev \
             signalfx-agent-dev \
                 pytest \
-                    -n2 \
+                    $PYTEST_OPTIONS \
                     -m "$PYTEST_MARKERS" \
                     --exitfirst \
                     --verbose \
@@ -156,6 +156,23 @@ jobs:
       K8S_VERSION: "v1.10.0"
       K8S_OBSERVERS: "k8s-api,k8s-kubelet"
       PYTEST_MARKERS: "k8s and (kubelet_stats or kubernetes_cluster or kubernetes_volumes or nginx or rabbitmq)"
+    steps:
+      - *attach_workspace
+      - *import_image
+      - *import_final_image
+      - *run_k8s_integration_tests
+      - store_test_results:
+          path: ~/testresults
+      - store_artifacts:
+          path: ~/testresults/k8s_integration_tests.html
+
+  k8s_v1.9.0_k8s-api_monitors_with_endpoints_tests_xdist:
+    <<: *executor
+    environment:
+      K8S_VERSION: "v1.9.0"
+      K8S_OBSERVERS: "k8s-api"
+      PYTEST_OPTIONS: "-n2"
+      PYTEST_MARKERS: "k8s and monitor_with_endpoints"
     steps:
       - *attach_workspace
       - *import_image
@@ -439,6 +456,10 @@ workflows:
 #        requires:
 #         - build
 #         - build_final_image
+     - k8s_v1.9.0_k8s-api_monitors_with_endpoints_tests_xdist:
+        requires:
+         - build
+         - build_final_image
      - k8s_v1.9.0_k8s-api_monitors_with_endpoints_tests:
         requires:
          - build
