@@ -98,6 +98,27 @@ run-dev-image:
 		-v $(CURDIR)/collectd:/usr/src/collectd:cached \
 		signalfx-agent-dev /bin/bash
 
+pytest_markers = k8s and (kubelet_stats or kubernetes_cluster or kubernetes_volumes or nginx or rabbitmq)
+.PHONY: run-k8s-tests
+run-k8s-tests:
+	docker exec -it $(docker_env) signalfx-agent-dev \
+		pytest \
+			--verbose \
+			-n2 \
+			-m "$(pytest_markers)" \
+			tests || \
+	docker run --rm -it \
+		$(extra_run_flags) \
+		--net host \
+		-v $(CURDIR):/go/src/github.com/signalfx/signalfx-agent:cached \
+		--name signalfx-agent-dev \
+		signalfx-agent-dev \
+			pytest \
+				--verbose \
+				-n2 \
+				-m "$(pytest_markers)" \
+				tests
+
 .PHONY: docs
 docs:
 	bash -c "rm -f docs/{observers,monitors}/*"
@@ -118,20 +139,4 @@ chef-%:
 .PHONY: puppet-%
 puppet-%:
 	$(MAKE) -C deployments/puppet $*
-
-.PHONY: run-k8s-tests
-run-k8s-tests:
-	docker exec -it signalfx-agent-dev \
-		pytest --verbose \
-			-m "k8s and (kubelet_stats or kubernetes_cluster or kubernetes_volumes or nginx or rabbitmq)" \
-			tests || \
-	docker run -it --rm --net host \
-		-v $(CURDIR):/go/src/github.com/signalfx/signalfx-agent:cached \
-		-v /var/run/docker.sock:/var/run/docker.sock \
-		-v /tmp/scratch:/tmp/scratch \
-		--name signalfx-agent-dev \
-		signalfx-agent-dev \
-			pytest --verbose \
-				-m "k8s and (kubelet_stats or kubernetes_cluster or kubernetes_volumes or nginx or rabbitmq)" \
-				tests
 
